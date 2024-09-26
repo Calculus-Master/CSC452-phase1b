@@ -1,0 +1,7 @@
+*.o
+*.out
+test*
+/.vagrant
+/.idea/
+.vscode/
+*.DS_Store
