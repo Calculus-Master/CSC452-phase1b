@@ -222,6 +222,7 @@ int join(int *status)
     USLOSS_PsrSet(old_psr);
 }
 
+//TODO: Remove and replace with quit
 void quit_phase_1a(int status, int switchToPid)
 {
     check_kernel_mode(QUIT_NAME);
@@ -248,6 +249,31 @@ void quit_phase_1a(int status, int switchToPid)
 void quit(int status)
 {
     // Not needed for Phase 1a
+}
+
+void zap(int pid)
+{
+
+}
+
+void blockMe(void)
+{
+
+}
+
+int unblockProc(int pid)
+{
+
+}
+
+void dispatcher(void)
+{
+
+}
+
+int currentTime(void)
+{
+
 }
 
 int getpid(void)
@@ -297,6 +323,7 @@ void dumpProcesses(void)
     USLOSS_PsrSet(old_psr);
 }
 
+//TODO: Remove and replace with dispatcher
 void TEMP_switchTo(int pid)
 {
     check_kernel_mode(TEMP_SWITCH_TO_NAME);
