@@ -77,9 +77,14 @@ int do_init()
 
     int pid = spork("testcase_main", do_testcase_main, NULL, USLOSS_MIN_STACK, 3);
 
-    TEMP_switchTo(pid);
+    int join_ret = 0;
+    int join_status; // Value is always ignored
+    while(join_ret != -2)
+        join_ret = join(&join_status);
 
-    return 0;
+    USLOSS_Halt(0);
+
+    return 0; // Should never happen
 }
 
 void process_wrapper()
