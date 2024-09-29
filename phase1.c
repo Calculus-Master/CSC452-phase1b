@@ -6,6 +6,7 @@
 #define READY_STATE 0
 #define RUNNING_STATE 1
 #define TERMINATED_STATE 2
+#define BLOCKED_STATE 3
 
 // Function name definitions
 #define PHASE1_INIT_NAME "phase1_init"
@@ -267,11 +268,6 @@ int unblockProc(int pid)
 }
 
 void dispatcher(void)
-{
-
-}
-
-int currentTime(void)
 {
 
 }
