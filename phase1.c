@@ -15,7 +15,9 @@
 #define JOIN_NAME "join"
 #define QUIT_NAME "quit_phase_1a"
 #define DUMP_PROCESSES_NAME "dumpProcesses"
-#define TEMP_SWITCH_TO_NAME "TEMP_switchTo"
+#define DISPATCHER_NAME "dispatcher"
+#define BLOCK_NAME "blockMe"
+#define UNBLOCK_NAME "unblockProc"
 
 typedef struct Process
 {
@@ -314,27 +316,59 @@ void quit_phase_1a(int status, int switchToPid)
 
 void quit(int status)
 {
-    // Not needed for Phase 1a
+    check_kernel_mode(QUIT_NAME);
+    int old_psr = disable_interrupts();
+
+    // Restore interrupts
+    USLOSS_PsrSet(old_psr);
 }
 
 void zap(int pid)
 {
+    check_kernel_mode(QUIT_NAME);
+    int old_psr = disable_interrupts();
 
+    // Restore interrupts
+    USLOSS_PsrSet(old_psr);
 }
 
 void blockMe(void)
 {
+    check_kernel_mode(BLOCK_NAME);
 
+    int old_psr = disable_interrupts();
+
+    current_process->state = BLOCKED_STATE;
+    dispatcher();
+
+    // Restore interrupts
+    USLOSS_PsrSet(old_psr);
 }
 
 int unblockProc(int pid)
 {
+    check_kernel_mode(UNBLOCK_NAME);
 
+    int old_psr = disable_interrupts();
+
+    Process* proc = &process_table[pid % MAXPROC];
+
+    if(proc->pid == 0 || proc->state != BLOCKED_STATE)
+        return -2;
+
+    proc->state = READY_STATE;
+    add_process_to_queue(proc);
+    dispatcher();
+
+    // Restore interrupts
+    USLOSS_PsrSet(old_psr);
+
+    return 0;
 }
 
 void dispatcher(void)
 {
-    check_kernel_mode(DUMP_PROCESSES_NAME);
+    check_kernel_mode(DISPATCHER_NAME);
 
     int old_psr = disable_interrupts();
 
@@ -365,15 +399,19 @@ void dispatcher(void)
         if(target_pid != -1)
         {
             Process* old = current_process;
-            old->state = READY_STATE;
 
             current_process = &process_table[target_pid % MAXPROC];
             current_process->state = RUNNING_STATE;
 
-            add_process_to_queue(old);
+            if(old->state == RUNNING_STATE) //TODO: if stuff starts breaking check here first
+            {
+                old->state = READY_STATE;
+                add_process_to_queue(old);
+            }
 
             USLOSS_ContextSwitch(&(old->context), &(current_process->context));
         }
+        else USLOSS_Console("DISPATCHER ERROR: target_pid = -1"); //TODO: temporary, idk if this is a case we need to handle
     }
 
     // Restore interrupts
