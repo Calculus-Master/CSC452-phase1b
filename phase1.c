@@ -41,6 +41,20 @@ Process *current_process;
 int next_pid = 1;
 char init_stack[USLOSS_MIN_STACK];
 
+Queue run_queue_p1;
+Queue run_queue_p2;
+Queue run_queue_p3;
+Queue run_queue_p4;
+Queue run_queue_p5;
+Queue run_queue_p6;
+
+Queue* p1 = &run_queue_p1;
+Queue* p2 = &run_queue_p2;
+Queue* p3 = &run_queue_p3;
+Queue* p4 = &run_queue_p4;
+Queue* p5 = &run_queue_p5;
+Queue* p6 = &run_queue_p6;
+
 // Process functions
 int do_testcase_main()
 {
@@ -98,20 +112,33 @@ void phase1_init(void)
 
     int old_psr = disable_interrupts();
 
+    // Set up the process table
     memset(process_table, 0, sizeof(process_table));
 
-    current_process = &process_table[next_pid % MAXPROC];
-    current_process->pid = next_pid++;
-    current_process->priority = 6;
-    current_process->state = READY_STATE;
-    strcpy(current_process->name, "init");
+    // Create the init process
+    Process* init_process = &process_table[next_pid % MAXPROC];
+    init_process->pid = next_pid++;
+    init_process->priority = 6;
+    init_process->state = READY_STATE;
+    strcpy(init_process->name, "init");
 
-    current_process->stack = init_stack;
+    init_process->stack = init_stack;
 
-    current_process->func = do_init;
-    current_process->arg = NULL;
+    init_process->func = do_init;
+    init_process->arg = NULL;
 
-    USLOSS_ContextInit(&(current_process->context), init_stack, USLOSS_MIN_STACK, NULL, process_wrapper);
+    USLOSS_ContextInit(&(init_process->context), init_stack, USLOSS_MIN_STACK, NULL, process_wrapper);
+
+    // Set current process pointer to NULL to help dispatcher
+    current_process = NULL;
+
+    // Initialize the run queues
+    queueInit(p1);
+    queueInit(p2);
+    queueInit(p3);
+    queueInit(p4);
+    queueInit(p5);
+    queueInit(p6);
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
@@ -268,9 +295,79 @@ int unblockProc(int pid)
 
 }
 
+void add_process_to_queue(Process* process)
+{
+    switch(process->priority)
+    {
+        case 1:
+            queueAdd(p1, process->pid);
+            break;
+        case 2:
+            queueAdd(p2, process->pid);
+            break;
+        case 3:
+            queueAdd(p3, process->pid);
+            break;
+        case 4:
+            queueAdd(p4, process->pid);
+            break;
+        case 5:
+            queueAdd(p5, process->pid);
+            break;
+        case 6:
+            queueAdd(p6, process->pid);
+            break;
+        default:
+            break;
+    }
+}
+
 void dispatcher(void)
 {
+    check_kernel_mode(DUMP_PROCESSES_NAME);
 
+    int old_psr = disable_interrupts();
+
+    // Edge case to start the very first init process
+    if(current_process == NULL)
+    {
+        current_process = &process_table[1];
+        current_process->state = RUNNING_STATE;
+        USLOSS_ContextSwitch(NULL, &(current_process->context));
+    }
+    else // Regular dispatcher logic
+    {
+        int target_pid = -1;
+
+        if(!queueEmpty(p1))
+            target_pid = queueRemove(p1);
+        else if(!queueEmpty(p2))
+            target_pid = queueRemove(p2);
+        else if(!queueEmpty(p3))
+            target_pid = queueRemove(p3);
+        else if(!queueEmpty(p4))
+            target_pid = queueRemove(p4);
+        else if(!queueEmpty(p5))
+            target_pid = queueRemove(p5);
+        else if(!queueEmpty(p6))
+            target_pid = queueRemove(p6);
+
+        if(target_pid != -1)
+        {
+            Process* old = current_process;
+            old->state = READY_STATE;
+
+            current_process = &process_table[target_pid % MAXPROC];
+            current_process->state = RUNNING_STATE;
+
+            add_process_to_queue(old);
+
+            USLOSS_ContextSwitch(&(old->context), &(current_process->context));
+        }
+    }
+
+    // Restore interrupts
+    USLOSS_PsrSet(old_psr);
 }
 
 int getpid(void)
@@ -321,22 +418,22 @@ void dumpProcesses(void)
 }
 
 //TODO: Remove and replace with dispatcher
-void TEMP_switchTo(int pid)
-{
-    check_kernel_mode(TEMP_SWITCH_TO_NAME);
-
-    int old_psr = disable_interrupts();
-
-    Process *old = current_process;
-    current_process = &process_table[pid % MAXPROC];
-
-    // Update states
-    if (pid != 1 && old->state != TERMINATED_STATE)
-        old->state = READY_STATE;
-    current_process->state = RUNNING_STATE;
-
-    USLOSS_ContextSwitch(pid == 1 ? NULL : &(old->context), &(current_process->context));
-
-    // Restore interrupts
-    USLOSS_PsrSet(old_psr);
-}
+//void TEMP_switchTo(int pid)
+//{
+//    check_kernel_mode(TEMP_SWITCH_TO_NAME);
+//
+//    int old_psr = disable_interrupts();
+//
+//    Process *old = current_process;
+//    current_process = &process_table[pid % MAXPROC];
+//
+//    // Update states
+//    if (pid != 1 && old->state != TERMINATED_STATE)
+//        old->state = READY_STATE;
+//    current_process->state = RUNNING_STATE;
+//
+//    USLOSS_ContextSwitch(pid == 1 ? NULL : &(old->context), &(current_process->context));
+//
+//    // Restore interrupts
+//    USLOSS_PsrSet(old_psr);
+//}
