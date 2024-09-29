@@ -55,12 +55,14 @@ Queue* p4 = &run_queue_p4;
 Queue* p5 = &run_queue_p5;
 Queue* p6 = &run_queue_p6;
 
-// Process functions
+// Process functions and helper methods
 int do_testcase_main()
 {
-    testcase_main();
+    int ret = testcase_main();
 
-    USLOSS_Console("Phase 1A TEMPORARY HACK: testcase_main() returned, simulation will now halt.\n");
+    if(ret != 0)
+        USLOSS_Console("ERROR: testcase_main() returned a non-zero value: %d\n", ret);
+
     USLOSS_Halt(0);
 
     return 0;
@@ -73,9 +75,8 @@ int do_init()
     phase4_start_service_processes();
     phase5_start_service_processes();
 
-    USLOSS_Console("Phase 1A TEMPORARY HACK: init() manually switching to testcase_main() after using spork() to create it.\n");
-
     int pid = spork("testcase_main", do_testcase_main, NULL, USLOSS_MIN_STACK, 3);
+    dumpProcesses();
 
     int join_ret = 0;
     int join_status; // Value is always ignored
@@ -108,6 +109,33 @@ int disable_interrupts()
     int old_psr = USLOSS_PsrGet();
     USLOSS_PsrSet(USLOSS_PsrGet() & ~USLOSS_PSR_CURRENT_INT);
     return old_psr;
+}
+
+void add_process_to_queue(Process* process)
+{
+    switch(process->priority)
+    {
+        case 1:
+            queueAdd(p1, process->pid);
+            break;
+        case 2:
+            queueAdd(p2, process->pid);
+            break;
+        case 3:
+            queueAdd(p3, process->pid);
+            break;
+        case 4:
+            queueAdd(p4, process->pid);
+            break;
+        case 5:
+            queueAdd(p5, process->pid);
+            break;
+        case 6:
+            queueAdd(p6, process->pid);
+            break;
+        default:
+            break;
+    }
 }
 
 // Main phase 1 functions
@@ -193,6 +221,10 @@ int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priorit
     new_process->parent = current_process;
     new_process->next_sibling = current_process->children;
     current_process->children = new_process;
+
+    add_process_to_queue(new_process);
+
+    dispatcher();
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
@@ -298,33 +330,6 @@ void blockMe(void)
 int unblockProc(int pid)
 {
 
-}
-
-void add_process_to_queue(Process* process)
-{
-    switch(process->priority)
-    {
-        case 1:
-            queueAdd(p1, process->pid);
-            break;
-        case 2:
-            queueAdd(p2, process->pid);
-            break;
-        case 3:
-            queueAdd(p3, process->pid);
-            break;
-        case 4:
-            queueAdd(p4, process->pid);
-            break;
-        case 5:
-            queueAdd(p5, process->pid);
-            break;
-        case 6:
-            queueAdd(p6, process->pid);
-            break;
-        default:
-            break;
-    }
 }
 
 void dispatcher(void)

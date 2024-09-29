@@ -1,5 +1,6 @@
 #include <queue.h>
 #include <string.h>
+#include <stdio.h>
 
 void queueInit(Queue* q)
 {
@@ -8,15 +9,19 @@ void queueInit(Queue* q)
 
 void queueAdd(Queue* q, int pid)
 {
-    q->end = (q->end + 1) % QUEUE_SIZE;
-    q->queue[q->end] = pid;
+    int target = queueEmpty(q) ? q->end : (q->end + 1) % QUEUE_SIZE;
+    q->queue[target] = pid;
+    q->end = target;
 }
 
 int queueRemove(Queue* q)
 {
     int ret = q->queue[q->start];
     q->queue[q->start] = 0;
-    q->start = (q->start + 1) % QUEUE_SIZE;
+
+    if(q->start != q->end)
+        q->start = (q->start + 1) % QUEUE_SIZE;
+
     return ret;
 }
 

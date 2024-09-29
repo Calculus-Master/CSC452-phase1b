@@ -3,7 +3,7 @@
 
 #include <phase1.h>
 
-#define QUEUE_SIZE MAXPROC + 2
+#define QUEUE_SIZE (MAXPROC + 2)
 
 typedef struct Queue {
     int queue[QUEUE_SIZE];
