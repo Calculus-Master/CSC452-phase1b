@@ -71,8 +71,7 @@ int do_init()
     phase4_start_service_processes();
     phase5_start_service_processes();
 
-    int pid = spork("testcase_main", do_testcase_main, NULL, USLOSS_MIN_STACK, 3);
-    dumpProcesses();
+    spork("testcase_main", do_testcase_main, NULL, USLOSS_MIN_STACK, 3);
 
     int join_ret = 0;
     int join_status; // Value is always ignored
@@ -318,7 +317,7 @@ void quit(int status)
     }
 
     // Unblock any processes that are zapped and waiting for this process
-    for(int i = 0; i < MAXPROC; i++)
+    for(int i = MAXPROC - 1; i >= 0; i--)
     {
         Process* p = &process_table[i];
         if(p->pid != 0 && p->zapped != NULL && p->zapped->pid == current_process->pid)
