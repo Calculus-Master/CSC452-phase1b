@@ -25,6 +25,7 @@ typedef struct Process
     struct Process *next_sibling;
     struct Process *children;
 
+    int start_time;
     short join_waiting;
     struct Process *zapped;
 
@@ -423,7 +424,7 @@ void dispatcher(void)
     else // Regular dispatcher logic
     {
         // If either of these are true, don't check priorities when pulling from queues
-        int override = current_process->state == BLOCKED_STATE || current_process->state == TERMINATED_STATE;
+        int override = current_process->state == BLOCKED_STATE || current_process->state == TERMINATED_STATE || (currentTime() - current_process->start_time) / 1000 > 80;
 
         int target_pid = -1;
 
@@ -454,6 +455,7 @@ void dispatcher(void)
                 add_process_to_queue(old);
             }
 
+            current_process->start_time = currentTime();
             USLOSS_ContextSwitch(&(old->context), &(current_process->context));
         }
     }
