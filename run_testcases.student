@@ -19,7 +19,7 @@
 
 
 # Set the test case name here
-TEST_CASE="test01"
+TEST_CASE="test$1"
 
 echo "TESTCASE $TEST_CASE"
 

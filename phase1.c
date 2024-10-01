@@ -15,7 +15,6 @@
 #define PHASE1_INIT_NAME "phase1_init"
 #define SPORK_NAME "spork"
 #define JOIN_NAME "join"
-// #define QUIT_NAME "quit_phase_1a"
 #define QUIT_NAME "quit"
 #define DUMP_PROCESSES_NAME "dumpProcesses"
 #define DISPATCHER_NAME "dispatcher"
@@ -37,6 +36,8 @@ typedef struct Process
     struct Process *parent;
     struct Process *next_sibling;
     struct Process *children;
+
+    struct Process *zapped;
 
     USLOSS_Context context;
 } Process;
@@ -97,7 +98,6 @@ void process_wrapper()
 {
     USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
     int status = current_process->func(current_process->arg);
-    // quit_phase_1a(status, current_process->parent->pid);
     quit(status);
 }
 
@@ -227,6 +227,7 @@ int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priorit
     new_process->parent = current_process;
     new_process->next_sibling = current_process->children;
     current_process->children = new_process;
+    current_process->zapped = NULL;
 
     add_process_to_queue(new_process);
 
@@ -323,6 +324,18 @@ void quit(int status)
         add_process_to_queue(current_process->parent);
     }
 
+    // Unblock any processes that are zapped and waiting for this process
+    for(int i = 0; i < MAXPROC; i++)
+    {
+        Process* p = &process_table[i];
+        if(p->pid != 0 && p->zapped != NULL && p->zapped->pid == current_process->pid)
+        {
+            p->zapped = NULL;
+            p->state = READY_STATE;
+            add_process_to_queue(p);
+        }
+    }
+
     dispatcher();
 
     // Restore interrupts
@@ -353,17 +366,10 @@ void zap(int pid)
         USLOSS_Halt(1);
     }
 
-    // If we've passed all checks, proceed with zapping
-    // Check if the target process is blocked in zap(), join(), or blockMe()
-    if (target->state == ZAP_WAIT_STATE || target->state == JOIN_WAIT_STATE || target->state == BLOCKED_STATE) {
-        // The target process remains in its current blocked state
-        // We don't need to do anything here, as the process will stay blocked
-    } else {
-        // get the process to zap based off the pid and process table
-        Process *zap_process = &process_table[pid % MAXPROC];
-        zap_process->state = ZAP_WAIT_STATE;
-        dispatcher();
-    }
+    // Update a flag in the current process to indicate what it's zapping
+    current_process->zapped = target;
+
+    blockMe();
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
@@ -501,24 +507,3 @@ void dumpProcesses(void)
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
 }
-
-//TODO: Remove and replace with dispatcher
-//void TEMP_switchTo(int pid)
-//{
-//    check_kernel_mode(TEMP_SWITCH_TO_NAME);
-//
-//    int old_psr = disable_interrupts();
-//
-//    Process *old = current_process;
-//    current_process = &process_table[pid % MAXPROC];
-//
-//    // Update states
-//    if (pid != 1 && old->state != TERMINATED_STATE)
-//        old->state = READY_STATE;
-//    current_process->state = RUNNING_STATE;
-//
-//    USLOSS_ContextSwitch(pid == 1 ? NULL : &(old->context), &(current_process->context));
-//
-//    // Restore interrupts
-//    USLOSS_PsrSet(old_psr);
-//}
