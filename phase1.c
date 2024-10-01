@@ -8,12 +8,15 @@
 #define RUNNING_STATE 1
 #define TERMINATED_STATE 2
 #define BLOCKED_STATE 3
+#define JOIN_WAIT_STATE 4
+#define ZAP_WAIT_STATE 5
 
 // Function name definitions
 #define PHASE1_INIT_NAME "phase1_init"
 #define SPORK_NAME "spork"
 #define JOIN_NAME "join"
-#define QUIT_NAME "quit_phase_1a"
+// #define QUIT_NAME "quit_phase_1a"
+#define QUIT_NAME "quit"
 #define DUMP_PROCESSES_NAME "dumpProcesses"
 #define DISPATCHER_NAME "dispatcher"
 #define BLOCK_NAME "blockMe"
@@ -94,7 +97,8 @@ void process_wrapper()
 {
     USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
     int status = current_process->func(current_process->arg);
-    quit_phase_1a(status, current_process->parent->pid);
+    // quit_phase_1a(status, current_process->parent->pid);
+    quit(status);
 }
 
 void check_kernel_mode(const char *function_name)
@@ -246,55 +250,60 @@ int join(int *status)
     // if the process does not have any children return -2
     if (current_process->children == NULL)
         return -2;
-
-    // Iterate through children to find any dead processes
+    
     Process *child = current_process->children;
-    while (child != NULL)
-    {
-        if (child->state == TERMINATED_STATE)
-        {
+    while (child != NULL) {
+        if (child->state == TERMINATED_STATE) {
             // Store the status through the out-pointer
             *status = child->status;
 
             // Remove the child from the parent's list
-            if (child == current_process->children)
-            {
+            if (child == current_process->children) {
                 current_process->children = child->next_sibling;
-            }
-            else
-            {
+            } else {
                 Process *prev = current_process->children;
-                while (prev->next_sibling != child)
-                {
+                while (prev->next_sibling != child) {
                     prev = prev->next_sibling;
                 }
                 prev->next_sibling = child->next_sibling;
             }
 
             // Free the child's stack memory
-            if (child->stack != NULL)
-            {
+            if (child->stack != NULL) {
                 free(child->stack);
                 child->stack = NULL;
             }
 
-            // Return the child's PID and clear out the child's process table entry
+            // Store the child's PID before clearing the process table entry
             int child_pid = child->pid;
             memset(child, 0, sizeof(Process));
+
+            // Unblock the parent if it is in join_wait_state
+            if (current_process->state == JOIN_WAIT_STATE) {
+                current_process->state = READY_STATE;
+                add_process_to_queue(current_process);
+            }
+
+            // Restore interrupts before returning
+            USLOSS_PsrSet(old_psr);
             return child_pid;
         }
         child = child->next_sibling;
     }
 
-    // Restore interrupts
     USLOSS_PsrSet(old_psr);
+
+    // If no children have terminated, block the current process
+    current_process->state = JOIN_WAIT_STATE;
+    dispatcher();
+
+    // recall join after so that when it's waken up after a child terminates, it can return the status of the child that just terminated
+    return join(status);
 }
 
-//TODO: Remove and replace with quit
-void quit_phase_1a(int status, int switchToPid)
+void quit(int status)
 {
     check_kernel_mode(QUIT_NAME);
-
     int old_psr = disable_interrupts();
 
     // Check if the current process has any children
@@ -308,16 +317,13 @@ void quit_phase_1a(int status, int switchToPid)
     current_process->status = status;
     current_process->state = TERMINATED_STATE;
 
-    TEMP_switchTo(switchToPid);
+    // Unblock the parent if it is in join_wait_state
+    if (current_process->parent->state == JOIN_WAIT_STATE) {
+        current_process->parent->state = READY_STATE;
+        add_process_to_queue(current_process->parent);
+    }
 
-    // Restore interrupts
-    USLOSS_PsrSet(old_psr);
-}
-
-void quit(int status)
-{
-    check_kernel_mode(QUIT_NAME);
-    int old_psr = disable_interrupts();
+    dispatcher();
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
@@ -327,6 +333,37 @@ void zap(int pid)
 {
     check_kernel_mode(QUIT_NAME);
     int old_psr = disable_interrupts();
+
+    // Check if the caller is trying to zap itself
+    if (pid == current_process->pid) {
+        USLOSS_Console("ERROR: Process %d tried to zap itself.\n", pid);
+        USLOSS_Halt(1);
+    }
+
+    // Check if the target process exists and is not terminated
+    Process* target = &process_table[pid % MAXPROC];
+    if (target->pid != pid || target->state == TERMINATED_STATE) {
+        USLOSS_Console("ERROR: Process %d tried to zap a non-existent or terminated process %d.\n", current_process->pid, pid);
+        USLOSS_Halt(1);
+    }
+
+    // Check if the target is the init process (PID 1)
+    if (pid == 1) {
+        USLOSS_Console("ERROR: Process %d tried to zap the init process (PID 1).\n", current_process->pid);
+        USLOSS_Halt(1);
+    }
+
+    // If we've passed all checks, proceed with zapping
+    // Check if the target process is blocked in zap(), join(), or blockMe()
+    if (target->state == ZAP_WAIT_STATE || target->state == JOIN_WAIT_STATE || target->state == BLOCKED_STATE) {
+        // The target process remains in its current blocked state
+        // We don't need to do anything here, as the process will stay blocked
+    } else {
+        // get the process to zap based off the pid and process table
+        Process *zap_process = &process_table[pid % MAXPROC];
+        zap_process->state = ZAP_WAIT_STATE;
+        dispatcher();
+    }
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);

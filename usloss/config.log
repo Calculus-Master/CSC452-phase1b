@@ -27,6 +27,7 @@ uname -v = #1 SMP Debian 5.10.221-1 (2024-07-14)
 /usr/bin/oslevel       = unknown
 /bin/universe          = unknown
 
+PATH: /home/vagrant/.cursor-server/cli/servers/Stable-51c8aff7cb5a89f4a0e462fbacab938bdbfaf140/server/bin/remote-cli
 PATH: /usr/local/bin
 PATH: /usr/bin
 PATH: /bin

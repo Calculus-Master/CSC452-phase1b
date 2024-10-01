@@ -38,4 +38,3 @@ ${TESTS}: phase1_common_testcase_code.o $(COBJS)
 
 clean:
 	-rm *.o ${TESTS} term[0-3].out libphase?-*-*.a
-
