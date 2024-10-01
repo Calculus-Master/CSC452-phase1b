@@ -341,20 +341,26 @@ void zap(int pid)
 
     // Check if the caller is trying to zap itself
     if (pid == current_process->pid) {
-        USLOSS_Console("ERROR: Process %d tried to zap itself.\n", pid);
+        USLOSS_Console("ERROR: Attempt to zap() itself.\n");
         USLOSS_Halt(1);
     }
 
     // Check if the target process exists and is not terminated
     Process* target = &process_table[pid % MAXPROC];
+
+    if(target->pid != pid) {
+        USLOSS_Console("ERROR: Attempt to zap() a non-existent process.\n");
+        USLOSS_Halt(1);
+    }
+
     if (target->pid != pid || target->state == TERMINATED_STATE) {
-        USLOSS_Console("ERROR: Process %d tried to zap a non-existent or terminated process %d.\n", current_process->pid, pid);
+        USLOSS_Console("ERROR: Attempt to zap() a process that is already in the process of dying.\n");
         USLOSS_Halt(1);
     }
 
     // Check if the target is the init process (PID 1)
     if (pid == 1) {
-        USLOSS_Console("ERROR: Process %d tried to zap the init process (PID 1).\n", current_process->pid);
+        USLOSS_Console("ERROR: Attempt to zap() init.\n");
         USLOSS_Halt(1);
     }
 
@@ -487,7 +493,7 @@ void dumpProcesses(void)
                     sprintf(state, "Terminated(%d)", proc->status);
                     break;
                 case BLOCKED_STATE:
-                    strcpy(state, proc->zapped != NULL ? "Blocked(waiting for zap target to quit)" : proc->join_waiting ? "Blocked(waiting for child to quit)" : "Blocked");
+                    strcpy(state, proc->zapped != NULL ? "Blocked(waiting for zap target to quit)" : proc->join_waiting ? "Blocked(waiting for child to quit)" : "Blocked(3)");
                     break;
                 default:
                     strcpy(state, "Unknown");
