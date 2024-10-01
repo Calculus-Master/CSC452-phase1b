@@ -11,16 +11,6 @@
 #define JOIN_WAIT_STATE 4
 #define ZAP_WAIT_STATE 5
 
-// Function name definitions
-#define PHASE1_INIT_NAME "phase1_init"
-#define SPORK_NAME "spork"
-#define JOIN_NAME "join"
-#define QUIT_NAME "quit"
-#define DUMP_PROCESSES_NAME "dumpProcesses"
-#define DISPATCHER_NAME "dispatcher"
-#define BLOCK_NAME "blockMe"
-#define UNBLOCK_NAME "unblockProc"
-
 typedef struct Process
 {
     int pid;
@@ -147,7 +137,7 @@ void add_process_to_queue(Process* process)
 // Main phase 1 functions
 void phase1_init(void)
 {
-    check_kernel_mode(PHASE1_INIT_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -185,7 +175,7 @@ void phase1_init(void)
 
 int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priority)
 {
-    check_kernel_mode(SPORK_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -240,7 +230,7 @@ int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priorit
 
 int join(int *status)
 {
-    check_kernel_mode(JOIN_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -304,7 +294,7 @@ int join(int *status)
 
 void quit(int status)
 {
-    check_kernel_mode(QUIT_NAME);
+    check_kernel_mode(__func__);
     int old_psr = disable_interrupts();
 
     // Check if the current process has any children
@@ -344,7 +334,7 @@ void quit(int status)
 
 void zap(int pid)
 {
-    check_kernel_mode(QUIT_NAME);
+    check_kernel_mode(__func__);
     int old_psr = disable_interrupts();
 
     // Check if the caller is trying to zap itself
@@ -377,7 +367,7 @@ void zap(int pid)
 
 void blockMe(void)
 {
-    check_kernel_mode(BLOCK_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -390,7 +380,7 @@ void blockMe(void)
 
 int unblockProc(int pid)
 {
-    check_kernel_mode(UNBLOCK_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -411,7 +401,7 @@ int unblockProc(int pid)
 
 void dispatcher(void)
 {
-    check_kernel_mode(DISPATCHER_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
@@ -468,7 +458,7 @@ int getpid(void)
 
 void dumpProcesses(void)
 {
-    check_kernel_mode(DUMP_PROCESSES_NAME);
+    check_kernel_mode(__func__);
 
     int old_psr = disable_interrupts();
 
