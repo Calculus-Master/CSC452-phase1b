@@ -8,8 +8,6 @@
 #define RUNNING_STATE 1
 #define TERMINATED_STATE 2
 #define BLOCKED_STATE 3
-#define JOIN_WAIT_STATE 4
-#define ZAP_WAIT_STATE 5
 
 typedef struct Process
 {
@@ -27,6 +25,7 @@ typedef struct Process
     struct Process *next_sibling;
     struct Process *children;
 
+    short join_waiting;
     struct Process *zapped;
 
     USLOSS_Context context;
@@ -270,8 +269,9 @@ int join(int *status)
             memset(child, 0, sizeof(Process));
 
             // Unblock the parent if it is in join_wait_state
-            if (current_process->state == JOIN_WAIT_STATE) {
+            if (current_process->state == BLOCKED_STATE && current_process->join_waiting) {
                 current_process->state = READY_STATE;
+                current_process->join_waiting = 0;
                 add_process_to_queue(current_process);
             }
 
@@ -285,7 +285,8 @@ int join(int *status)
     USLOSS_PsrSet(old_psr);
 
     // If no children have terminated, block the current process
-    current_process->state = JOIN_WAIT_STATE;
+    current_process->state = BLOCKED_STATE;
+    current_process->join_waiting = 1;
     dispatcher();
 
     // recall join after so that when it's waken up after a child terminates, it can return the status of the child that just terminated
@@ -309,8 +310,9 @@ void quit(int status)
     current_process->state = TERMINATED_STATE;
 
     // Unblock the parent if it is in join_wait_state
-    if (current_process->parent->state == JOIN_WAIT_STATE) {
+    if (current_process->parent->state == BLOCKED_STATE && current_process->parent->join_waiting) {
         current_process->parent->state = READY_STATE;
+        current_process->parent->join_waiting = 0;
         add_process_to_queue(current_process->parent);
     }
 
@@ -414,29 +416,33 @@ void dispatcher(void)
     }
     else // Regular dispatcher logic
     {
+        // If either of these are true, don't check priorities when pulling from queues
+        int override = current_process->state == BLOCKED_STATE || current_process->state == TERMINATED_STATE;
+
         int target_pid = -1;
 
-        if(!queueEmpty(p1))
+        if(!queueEmpty(p1) && (override || current_process->priority > 1))
             target_pid = queueRemove(p1);
-        else if(!queueEmpty(p2))
+        else if(!queueEmpty(p2) && (override || current_process->priority > 2))
             target_pid = queueRemove(p2);
-        else if(!queueEmpty(p3))
+        else if(!queueEmpty(p3) && (override || current_process->priority > 3))
             target_pid = queueRemove(p3);
-        else if(!queueEmpty(p4))
+        else if(!queueEmpty(p4) && (override || current_process->priority > 4))
             target_pid = queueRemove(p4);
-        else if(!queueEmpty(p5))
+        else if(!queueEmpty(p5) && (override || current_process->priority > 5))
             target_pid = queueRemove(p5);
-        else if(!queueEmpty(p6))
+        else if(!queueEmpty(p6) && (override || current_process->priority > 6))
             target_pid = queueRemove(p6);
 
         if(target_pid != -1)
         {
-            Process* old = current_process;
+            Process* target = &process_table[target_pid % MAXPROC];
 
-            current_process = &process_table[target_pid % MAXPROC];
+            Process* old = current_process;
+            current_process = target;
             current_process->state = RUNNING_STATE;
 
-            if(old->state == RUNNING_STATE) //TODO: if stuff starts breaking check here first
+            if(old->state == RUNNING_STATE)
             {
                 old->state = READY_STATE;
                 add_process_to_queue(old);
@@ -444,7 +450,6 @@ void dispatcher(void)
 
             USLOSS_ContextSwitch(&(old->context), &(current_process->context));
         }
-        else USLOSS_Console("DISPATCHER ERROR: target_pid = -1"); //TODO: temporary, idk if this is a case we need to handle
     }
 
     // Restore interrupts
@@ -469,20 +474,23 @@ void dumpProcesses(void)
         Process *proc = &process_table[i];
         if (proc->pid != 0)
         {
-            char state[20];
+            char state[40];
             switch (proc->state)
             {
-            case READY_STATE:
-                strcpy(state, "Runnable");
-                break;
-            case RUNNING_STATE:
-                strcpy(state, "Running");
-                break;
-            case TERMINATED_STATE:
-                sprintf(state, "Terminated(%d)", proc->status);
-                break;
-            default:
-                strcpy(state, "Unknown");
+                case READY_STATE:
+                    strcpy(state, "Runnable");
+                    break;
+                case RUNNING_STATE:
+                    strcpy(state, "Running");
+                    break;
+                case TERMINATED_STATE:
+                    sprintf(state, "Terminated(%d)", proc->status);
+                    break;
+                case BLOCKED_STATE:
+                    strcpy(state, proc->zapped != NULL ? "Blocked(waiting for zap target to quit)" : proc->join_waiting ? "Blocked(waiting for child to quit)" : "Blocked");
+                    break;
+                default:
+                    strcpy(state, "Unknown");
             }
 
             USLOSS_Console(" %3d %5d  %-16s  %d         %s\n",
