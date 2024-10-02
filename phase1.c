@@ -14,13 +14,14 @@ typedef struct Process
     int pid;
     int priority;
     int status;
-    int state;
+    int state; // info on the running/block state of each process
     char name[MAXNAME];
     char *stack;
 
     int (*func)(void *);
     void *arg;
 
+    // structs to set up linked lists of the processes
     struct Process *parent;
     struct Process *next_sibling;
     struct Process *children;
@@ -37,6 +38,7 @@ Process *current_process;
 int next_pid = 1;
 char init_stack[USLOSS_MIN_STACK];
 
+// Run queues for each priority
 Queue run_queue_p1;
 Queue run_queue_p2;
 Queue run_queue_p3;
@@ -71,8 +73,10 @@ int do_init()
     phase4_start_service_processes();
     phase5_start_service_processes();
 
+    // Spawn the testcase_main process
     spork("testcase_main", do_testcase_main, NULL, USLOSS_MIN_STACK, 3);
 
+    // Join the testcase_main process
     int join_ret = 0;
     int join_status; // Value is always ignored
     while(join_ret != -2)
@@ -83,6 +87,7 @@ int do_init()
     return 0; // Should never happen
 }
 
+// Wrapper function to call the process's function and then quit
 void process_wrapper()
 {
     USLOSS_PsrSet(USLOSS_PsrGet() | USLOSS_PSR_CURRENT_INT);
@@ -90,6 +95,7 @@ void process_wrapper()
     quit(status);
 }
 
+// Checks if the current process is in kernel mode
 void check_kernel_mode(const char *function_name)
 {
     if ((USLOSS_PsrGet() & USLOSS_PSR_CURRENT_MODE) == 0)
@@ -99,6 +105,7 @@ void check_kernel_mode(const char *function_name)
     }
 }
 
+// Disables interrupts by saving the current PSR and setting it to not interrupt
 int disable_interrupts()
 {
     int old_psr = USLOSS_PsrGet();
@@ -106,6 +113,7 @@ int disable_interrupts()
     return old_psr;
 }
 
+// Adds the process to the appropriate run queue based on its priority
 void add_process_to_queue(Process* process)
 {
     switch(process->priority)
@@ -172,6 +180,7 @@ void phase1_init(void)
     USLOSS_PsrSet(old_psr);
 }
 
+// Spawns a new process with the given parameters
 int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priority)
 {
     check_kernel_mode(__func__);
@@ -201,6 +210,7 @@ int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priorit
         new_process = &process_table[next_pid % MAXPROC];
     }
 
+    // Initialize the new process
     memset(new_process, 0, sizeof(Process));
     new_process->pid = next_pid++;
     new_process->state = READY_STATE;
@@ -213,20 +223,26 @@ int spork(char *name, int (*func)(void *), void *arg, int stacksize, int priorit
 
     USLOSS_ContextInit(&(new_process->context), new_process->stack, stacksize, NULL, process_wrapper);
 
+    // Set up the parent-child relationship
     new_process->parent = current_process;
     new_process->next_sibling = current_process->children;
     current_process->children = new_process;
     current_process->zapped = NULL;
 
+    // Add the new process to the appropriate run queue
     add_process_to_queue(new_process);
 
+    // Call the dispatcher to start the new process
     dispatcher();
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
+
+    // Return the PID of the new process
     return new_process->pid;
 }
 
+// Joins on a child process and returns its status
 int join(int *status)
 {
     check_kernel_mode(__func__);
@@ -293,6 +309,7 @@ int join(int *status)
     return join(status);
 }
 
+// Quits the current process with the given status
 void quit(int status)
 {
     check_kernel_mode(__func__);
@@ -328,12 +345,14 @@ void quit(int status)
         }
     }
 
+    // Call the dispatcher to start the next process
     dispatcher();
 
     // Restore interrupts
     USLOSS_PsrSet(old_psr);
 }
 
+// Zaps a process by setting a flag in the current process
 void zap(int pid)
 {
     check_kernel_mode(__func__);
@@ -353,6 +372,7 @@ void zap(int pid)
         USLOSS_Halt(1);
     }
 
+    // Check if the target is already in the process of dying
     if (target->pid != pid || target->state == TERMINATED_STATE) {
         USLOSS_Console("ERROR: Attempt to zap() a process that is already in the process of dying.\n");
         USLOSS_Halt(1);
@@ -392,6 +412,7 @@ int unblockProc(int pid)
 
     int old_psr = disable_interrupts();
 
+    // Check if the process exists and is blocked
     Process* proc = &process_table[pid % MAXPROC];
 
     if(proc->pid == 0 || proc->state != BLOCKED_STATE)
@@ -427,6 +448,7 @@ void dispatcher(void)
 
         int target_pid = -1;
 
+        // Check each priority queue in order and pull the PID of the process to run
         if(!queueEmpty(p1) && (override || current_process->priority > 1))
             target_pid = queueRemove(p1);
         else if(!queueEmpty(p2) && (override || current_process->priority > 2))
@@ -440,6 +462,7 @@ void dispatcher(void)
         else if(!queueEmpty(p6) && (override || current_process->priority > 6))
             target_pid = queueRemove(p6);
 
+        // If a process was found to run, switch to it
         if(target_pid != -1)
         {
             Process* target = &process_table[target_pid % MAXPROC];
@@ -468,6 +491,7 @@ int getpid(void)
     return current_process->pid;
 }
 
+// Dumps the state of all processes 
 void dumpProcesses(void)
 {
     check_kernel_mode(__func__);
